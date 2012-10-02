@@ -1,0 +1,79 @@
+#!/usr/bin/php
+<?php
+
+/**
+ * Fetch Github issues and output in Markdown format, for offline viewing.
+ *
+ * Arguments:
+ * - username
+ * - password
+ * - account
+ * - repository
+ * - parameters (see http://developer.github.com/v3/issues/)
+ *   - Example: state=open
+ *
+ * Sample URL: https://api.github.com/repos/account/repo/issues?state=open
+ *
+ * Example:
+ *
+ * ./github-issues-markdown {username} {password} {account} {repository} state=open
+ */
+
+require_once '../includes/simple-curl.php';
+
+$username = $argv[1];
+$password = $argv[2];
+$account = $argv[3];
+$repository = $argv[4];
+$parameters = $argv[5];
+
+if (!$username || !$password || !$account || !$repository) {
+  throw new Exception('Argument missing');
+}
+
+$url = 'https://api.github.com/repos/'. $account .'/'. $repository .'/issues';
+if ($parameters) {
+  $url .= '?'. $parameters;
+}
+
+$result = simple_curl_get($url, $username, $password);
+$issues = NULL;
+if ($result->code == 200) {
+  $issues = json_decode($result->data);
+}
+
+if (!$issues) {
+  throw new Exception('Could not retrieve issues from Github');
+}
+
+$lines = array();
+
+foreach ($issues as $issue) {
+  $labels = array();
+  foreach ($issue->labels as $label) {
+    $labels[] = $label->name;
+  }
+
+  $lines[] = "## $issue->number: $issue->title ($issue->state) ##";
+  $lines[] = "<$issue->url>";
+  $lines[] = "";
+  $lines[] = "- Created by ". $issue->user->login ."on $issue->created_at";
+  if ($issue->assignee) {
+    $lines[] = "- Assigned to ". $issue->assignee->login;
+  }
+  $lines[] = "- Last updated on $issue->updated_at";
+  if ($issue->closed_at) {
+    $lines[] = "- Closed on $issue->closed_at";
+  }
+  if (count($labels)) {
+    $lines[] = "- Labels: ". implode(', ', $labels);
+  }
+  $lines[] = "";
+
+  $lines[] = $issue->body;
+  $lines[] = "";
+  $lines[] = "----";
+  $lines[] = "";
+}
+
+print implode("\n", $lines);
